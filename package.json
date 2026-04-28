@@ -13,7 +13,7 @@
   },
   "scripts": {
     "check": "node --check mcp/ado-bug-agent-mcp.js",
-    "test": "node tests/mcp-handshake.js"
+    "test": "node tests/mcp-handshake.js && node tests/mcp-image-cache.js"
   },
   "homepage": "https://github.com/Gchigoo/ado-bug-agent",
   "repository": {

@@ -15,8 +15,10 @@ Steps:
    - Pure numeric input is a Bug ID; use `ado_get_bug`.
    - `--title` or non-numeric input is a title query; use `ado_search_bugs` in the resolved project.
    - If multiple Bugs match, ask the user to choose one ID.
+   - Keep `ado_get_bug` image handling enabled by default. Use the default `imageMode: "cache"` so ADO screenshots and image attachments are saved to local cache paths instead of being returned as token-expensive base64 or raw protected URLs.
 4. Create or update `bug-analysis/issues/YYYY-MM-DD-ado-{id}-{slug}/`.
 5. Write or update `{slug}-report.md`.
 6. If the report can be confirmed, read code and write `{slug}-analysis.md` using the staged analysis method from this plugin.
 7. Maintain `agent-run.json`.
 8. Stop after `analysis-draft`; do not modify business code and do not commit.
+9. After the user confirms the analysis and detailed repair plan, call `ado_clear_bug_image_cache` for this Bug ID to remove cached screenshots.

@@ -48,6 +48,21 @@ Automation stops at `analysis-draft`.
    - `ado_get_bug`
    - `ado_get_open_bug_assignees`
    - `ado_search_identities`
+   - `ado_clear_bug_image_cache`
+
+`ado_get_bug` returns sanitized text plus downloadable ADO screenshots or image attachment metadata. By default, images are downloaded to `.ado-bug-agent/cache/attachments/...` and returned as local paths so the host can read only the images it needs. The default cost boundary is 5 images per Bug and 10 MB per image. When `imageEvidence` includes `localPath`, inspect only the relevant local image files through the host's normal image-reading capability. Use `imageMode: "inline"` only when the host specifically needs MCP image content in the tool response; it is token-expensive. Treat image evidence as important problem context, but do not paste raw protected ADO attachment URLs into report or analysis files. Preserve image findings as concise observations and cite their ADO source metadata.
+
+After the user confirms the analysis and detailed repair plan, call `ado_clear_bug_image_cache` for that Bug ID. Keep the report and analysis text, but remove cached screenshots to save disk space.
+
+## Multi-Bug Scan
+
+When a scan returns multiple Bugs, keep the parent agent as the coordinator:
+
+- If the host supports subagents, create one isolated subagent task per Bug ID.
+- Limit active subagents to 2-3 at a time unless the user explicitly asks for more.
+- Each subagent must process exactly one Bug, fetch only that Bug's full ADO content and images, and write only its own `bug-analysis/issues/...` files.
+- The parent should collect only summaries and artifact paths from subagents, not every Bug's full ADO payload or screenshots.
+- If subagents are unavailable, process Bugs sequentially and compact each Bug down to a short summary before starting the next one.
 
 ## Report Rules
 

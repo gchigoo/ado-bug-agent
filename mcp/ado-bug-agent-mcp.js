@@ -1,9 +1,18 @@
 #!/usr/bin/env node
 
+const crypto = require("node:crypto");
+const fs = require("node:fs/promises");
+const path = require("node:path");
+
 const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const DEFAULT_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
 const API_VERSION = "7.1";
 const COMMENT_API_VERSION = "7.1-preview.3";
+const DEFAULT_IMAGE_LIMIT = 5;
+const MAX_IMAGE_LIMIT = 10;
+const DEFAULT_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const DEFAULT_IMAGE_MODE = "cache";
+const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"]);
 
 let stdinBuffer = "";
 
@@ -150,14 +159,19 @@ function listTools() {
     },
     {
       name: "ado_get_bug",
-      description: "Fetch one Azure DevOps Bug by ID, including fields, relations, and optional comments.",
+      description: "Fetch one Azure DevOps Bug by ID, including fields, relations, optional comments, and downloadable image evidence.",
       inputSchema: {
         type: "object",
         required: ["id"],
         properties: {
           id: { type: "integer" },
           project: { type: "string" },
-          includeComments: { type: "boolean", default: true }
+          includeComments: { type: "boolean", default: true },
+          includeImages: { type: "boolean", default: true },
+          imageMode: { type: "string", enum: ["cache", "inline", "metadata"], default: DEFAULT_IMAGE_MODE },
+          maxImages: { type: "integer", minimum: 0, maximum: MAX_IMAGE_LIMIT, default: DEFAULT_IMAGE_LIMIT },
+          maxImageBytes: { type: "integer", minimum: 1, default: DEFAULT_MAX_IMAGE_BYTES },
+          sanitizeRichText: { type: "boolean", default: true }
         }
       }
     },
@@ -181,6 +195,17 @@ function listTools() {
         required: ["query"],
         properties: {
           query: { type: "string" }
+        }
+      }
+    },
+    {
+      name: "ado_clear_bug_image_cache",
+      description: "Delete cached ADO image attachments for one Bug after its analysis and repair plan have been confirmed.",
+      inputSchema: {
+        type: "object",
+        required: ["id"],
+        properties: {
+          id: { type: "integer" }
         }
       }
     }
@@ -217,10 +242,10 @@ function getPrompt(params) {
   }
   if (name === "ado_bug_analyze") {
     const bug = args.bug || "<bug id or title>";
-    return promptResult(`Analyze Azure DevOps Bug ${bug}. Use the bundled ADO MCP tools, create or update the bug report, then draft the root-cause analysis. Do not modify business code or commit.`);
+    return promptResult(`Analyze Azure DevOps Bug ${bug}. Use the bundled ADO MCP tools, including ado_get_bug image evidence when available. Keep ado_get_bug imageMode at the default "cache" unless inline image content is explicitly needed. Create or update the bug report, then draft the root-cause analysis. Do not modify business code or commit.`);
   }
   if (name === "ado_bug_scan") {
-    return promptResult("Scan open Azure DevOps Bugs for the configured project and assignee. For each eligible Bug, create or update the bug report and root-cause analysis draft. Do not modify business code or commit.");
+    return promptResult("Scan open Azure DevOps Bugs for the configured project and assignee. If multiple Bugs are eligible and the host supports subagents, coordinate one isolated subagent per Bug with 2-3 active at a time and collect only summaries plus artifact paths. For each eligible Bug, create or update the bug report and root-cause analysis draft. Do not modify business code or commit.");
   }
   throw new Error(`Unknown prompt: ${name}`);
 }
@@ -249,11 +274,13 @@ async function callTool(params) {
     case "ado_search_bugs":
       return textResult(await searchBugs(args));
     case "ado_get_bug":
-      return textResult(await getBug(args));
+      return bugResult(await getBug(args));
     case "ado_get_open_bug_assignees":
       return textResult(await getOpenBugAssignees(args));
     case "ado_search_identities":
       return textResult(await searchIdentities(args));
+    case "ado_clear_bug_image_cache":
+      return textResult(await clearBugImageCache(args));
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -268,6 +295,25 @@ function textResult(value) {
       }
     ]
   };
+}
+
+function bugResult(value) {
+  const content = [
+    {
+      type: "text",
+      text: JSON.stringify(value.bug, null, 2)
+    }
+  ];
+
+  for (const image of value.images) {
+    content.push({
+      type: "image",
+      mimeType: image.mimeType,
+      data: image.data
+    });
+  }
+
+  return { content };
 }
 
 function getConfig() {
@@ -312,6 +358,37 @@ async function adoFetch(path, options = {}) {
   }
 
   return text ? JSON.parse(text) : {};
+}
+
+async function adoFetchBinary(path, maxBytes) {
+  const { orgUrl, pat } = getConfig();
+  const url = path.startsWith("http") ? path : `${orgUrl}${path}`;
+  const headers = {
+    Authorization: `Basic ${Buffer.from(`:${pat}`).toString("base64")}`,
+    Accept: "*/*"
+  };
+
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Azure DevOps attachment API ${response.status}: ${text.slice(0, 300)}`);
+  }
+
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > maxBytes) {
+    throw new Error(`Attachment is too large: ${contentLength} bytes exceeds ${maxBytes} bytes.`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > maxBytes) {
+    throw new Error(`Attachment is too large: ${buffer.length} bytes exceeds ${maxBytes} bytes.`);
+  }
+
+  return {
+    buffer,
+    sizeBytes: buffer.length,
+    mimeType: normalizeMimeType(response.headers.get("content-type"))
+  };
 }
 
 async function listProjects() {
@@ -389,13 +466,28 @@ async function getBug(args) {
     }
   }
 
-  return {
+  const sanitizeRichText = args.sanitizeRichText !== false;
+  const imageMode = normalizeImageMode(args.imageMode);
+  const maxImages = clampNumber(args.maxImages === undefined ? DEFAULT_IMAGE_LIMIT : args.maxImages, 0, MAX_IMAGE_LIMIT);
+  const maxImageBytes = clampNumber(args.maxImageBytes || DEFAULT_MAX_IMAGE_BYTES, 1, Number.MAX_SAFE_INTEGER);
+  const imageRefs = collectImageReferences(fields, item.relations || [], comments);
+  const selectedImageRefs = args.includeImages === false ? [] : imageRefs.slice(0, maxImages);
+  const imageDownloads = await downloadImageReferences(selectedImageRefs, maxImageBytes, imageMode, item.id);
+  const imageEvidence = buildImageEvidence(imageRefs, imageDownloads, selectedImageRefs.length, maxImages);
+
+  const bug = {
     id: item.id,
     rev: item.rev,
     url: item.url,
-    fields,
-    relations: item.relations || [],
-    comments
+    fields: sanitizeRichText ? sanitizeObject(fields) : fields,
+    relations: sanitizeRelations(item.relations || [], sanitizeRichText),
+    comments: comments.map((comment) => sanitizeRichText ? sanitizeObject(comment) : comment),
+    imageEvidence
+  };
+
+  return {
+    bug,
+    images: imageDownloads.filter((image) => image.data)
   };
 }
 
@@ -424,6 +516,38 @@ ORDER BY [System.ChangedDate] DESC`;
   return {
     count: seen.size,
     assignees: Array.from(seen.values())
+  };
+}
+
+async function clearBugImageCache(args) {
+  const id = Number(args.id);
+  if (!Number.isInteger(id)) {
+    throw new Error("id must be an integer.");
+  }
+
+  const cacheRoot = getAttachmentCacheRoot();
+  const targetDir = path.resolve(cacheRoot, String(id));
+  assertPathInside(cacheRoot, targetDir);
+
+  let existed = true;
+  try {
+    await fs.stat(targetDir);
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      existed = false;
+    } else {
+      throw error;
+    }
+  }
+
+  if (existed) {
+    await fs.rm(targetDir, { recursive: true, force: true });
+  }
+
+  return {
+    id,
+    cacheDir: targetDir,
+    deleted: existed
   };
 }
 
@@ -471,6 +595,377 @@ function normalizeIdentity(value) {
     id: value.id,
     descriptor: value.descriptor
   };
+}
+
+function collectImageReferences(fields, relations, comments) {
+  const refs = [];
+
+  for (const [fieldName, value] of Object.entries(fields || {})) {
+    if (typeof value === "string") {
+      collectImageReferencesFromText(value, `field:${fieldName}`, refs);
+    }
+  }
+
+  for (const comment of comments || []) {
+    if (comment && typeof comment.text === "string") {
+      collectImageReferencesFromText(comment.text, `comment:${comment.id || "unknown"}`, refs);
+    }
+  }
+
+  for (const relation of relations || []) {
+    if (!relation || relation.rel !== "AttachedFile" || typeof relation.url !== "string") {
+      continue;
+    }
+    const name = relation.attributes && relation.attributes.name ? String(relation.attributes.name) : filenameFromUrl(relation.url);
+    refs.push({
+      source: "relation:AttachedFile",
+      url: relation.url,
+      name,
+      sizeBytes: relation.attributes && relation.attributes.resourceSize,
+      candidateType: isImageFilename(name) ? "image-filename" : "attachment"
+    });
+  }
+
+  return dedupeImageReferences(refs);
+}
+
+function collectImageReferencesFromText(text, source, refs) {
+  const imgTagPattern = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+  let match;
+  while ((match = imgTagPattern.exec(text)) !== null) {
+    const url = decodeHtmlEntities(match[1]);
+    refs.push({
+      source,
+      url,
+      name: filenameFromUrl(url)
+    });
+  }
+
+  const markdownImagePattern = /!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+  while ((match = markdownImagePattern.exec(text)) !== null) {
+    const url = decodeHtmlEntities(match[1]);
+    refs.push({
+      source,
+      url,
+      name: filenameFromUrl(url)
+    });
+  }
+}
+
+function dedupeImageReferences(refs) {
+  const seen = new Set();
+  const result = [];
+  for (const ref of refs) {
+    if (!ref.url || typeof ref.url !== "string") {
+      continue;
+    }
+    const key = ref.url;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(ref);
+  }
+  return result;
+}
+
+async function downloadImageReferences(refs, maxImageBytes, imageMode, bugId) {
+  const images = [];
+  for (let index = 0; index < refs.length; index += 1) {
+    const ref = refs[index];
+    try {
+      if (imageMode === "metadata") {
+        images.push({
+          index,
+          source: ref.source,
+          name: ref.name,
+          sizeBytes: ref.sizeBytes,
+          status: "metadata-only"
+        });
+        continue;
+      }
+
+      if (ref.url.startsWith("data:image/")) {
+        const inlineImage = readDataImage(ref, index);
+        if (inlineImage.sizeBytes > maxImageBytes) {
+          throw new Error(`Inline image is too large: ${inlineImage.sizeBytes} bytes exceeds ${maxImageBytes} bytes.`);
+        }
+        images.push(await materializeImage(inlineImage, imageMode, bugId));
+        continue;
+      }
+
+      if (!isAllowedAdoAttachmentUrl(ref.url)) {
+        throw new Error("Skipping external or non-ADO attachment URL.");
+      }
+
+      const downloaded = await adoFetchBinary(toAttachmentDownloadUrl(ref.url), maxImageBytes);
+      const inferredMimeType = downloaded.mimeType || mimeTypeFromFilename(ref.name);
+      if (!isSupportedImageMimeType(inferredMimeType)) {
+        throw new Error(`Attachment content type is not a supported image: ${inferredMimeType || "unknown"}.`);
+      }
+      images.push(await materializeImage({
+        index,
+        source: ref.source,
+        name: ref.name,
+        mimeType: inferredMimeType,
+        sizeBytes: downloaded.sizeBytes,
+        buffer: downloaded.buffer,
+        status: "downloaded"
+      }, imageMode, bugId));
+    } catch (error) {
+      images.push({
+        index,
+        source: ref.source,
+        name: ref.name,
+        status: "error",
+        error: error.message || String(error)
+      });
+    }
+  }
+  return images;
+}
+
+function readDataImage(ref, index) {
+  const match = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(ref.url);
+  if (!match) {
+    throw new Error("Unsupported inline image data URI.");
+  }
+  const mimeType = normalizeMimeType(match[1]);
+  if (!isSupportedImageMimeType(mimeType)) {
+    throw new Error(`Inline image content type is not supported: ${mimeType || "unknown"}.`);
+  }
+  return {
+    index,
+    source: ref.source,
+    name: ref.name,
+    mimeType,
+    sizeBytes: Buffer.from(match[2], "base64").length,
+    buffer: Buffer.from(match[2], "base64"),
+    status: "downloaded"
+  };
+}
+
+async function materializeImage(image, imageMode, bugId) {
+  if (imageMode === "inline") {
+    return {
+      ...image,
+      data: image.buffer.toString("base64"),
+      buffer: undefined
+    };
+  }
+
+  const localPath = await writeCachedImage(image, bugId);
+  return {
+    ...image,
+    localPath,
+    buffer: undefined
+  };
+}
+
+async function writeCachedImage(image, bugId) {
+  const cacheRoot = getAttachmentCacheRoot();
+  const bugDir = path.join(cacheRoot, String(bugId));
+  assertPathInside(cacheRoot, path.resolve(bugDir));
+  await fs.mkdir(bugDir, { recursive: true });
+
+  const extension = extensionFromMimeType(image.mimeType) || path.extname(image.name || "") || ".img";
+  const baseName = sanitizeFilename(path.basename(image.name || "ado-image", path.extname(image.name || ""))) || "ado-image";
+  const hash = crypto.createHash("sha256").update(image.buffer).digest("hex").slice(0, 12);
+  const filePath = path.join(bugDir, `${String(image.index).padStart(2, "0")}-${baseName}-${hash}${extension}`);
+  await fs.writeFile(filePath, image.buffer);
+  return filePath;
+}
+
+function getAttachmentCacheRoot() {
+  return path.resolve(process.env.ADO_BUG_AGENT_CACHE_DIR || path.join(process.cwd(), ".ado-bug-agent", "cache", "attachments"));
+}
+
+function assertPathInside(root, target) {
+  const relative = path.relative(path.resolve(root), path.resolve(target));
+  if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) {
+    return;
+  }
+  throw new Error(`Refusing to access path outside attachment cache: ${target}`);
+}
+
+function buildImageEvidence(allRefs, imageDownloads, selectedCount, maxImages) {
+  const byIndex = new Map(imageDownloads.map((image) => [image.index, image]));
+  return allRefs.map((ref, index) => {
+    const download = byIndex.get(index);
+    if (!download) {
+      return {
+        index,
+        source: ref.source,
+        name: ref.name,
+        candidateType: ref.candidateType,
+        status: index >= maxImages ? "skipped-limit" : "not-requested",
+        selectedCount
+      };
+    }
+    return {
+      index,
+      source: ref.source,
+      name: ref.name,
+      candidateType: ref.candidateType,
+      status: download.status,
+      mimeType: download.mimeType,
+      sizeBytes: download.sizeBytes,
+      returnedAsImageContent: Boolean(download.data),
+      localPath: download.localPath,
+      error: download.error
+    };
+  });
+}
+
+function sanitizeObject(value) {
+  if (typeof value === "string") {
+    return sanitizeRichTextValue(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeObject(item));
+  }
+  if (value && typeof value === "object") {
+    const result = {};
+    for (const [key, child] of Object.entries(value)) {
+      result[key] = sanitizeObject(child);
+    }
+    return result;
+  }
+  return value;
+}
+
+function sanitizeRelations(relations, shouldSanitize) {
+  if (!shouldSanitize) {
+    return relations;
+  }
+  return relations.map((relation) => {
+    if (!relation || relation.rel !== "AttachedFile") {
+      return sanitizeObject(relation);
+    }
+    const attributes = relation.attributes || {};
+    return {
+      rel: relation.rel,
+      attributes: sanitizeObject({
+        name: attributes.name,
+        comment: attributes.comment,
+        resourceSize: attributes.resourceSize,
+        revisedDate: attributes.revisedDate,
+        authorizedDate: attributes.authorizedDate
+      }),
+      urlOmitted: true
+    };
+  });
+}
+
+function sanitizeRichTextValue(value) {
+  return value
+    .replace(/<img\b[^>]*>/gi, "[ADO image omitted from text; returned separately when downloadable]")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, "[ADO image omitted from text; returned separately when downloadable]")
+    .replace(/data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi, "[ADO inline image omitted from text]")
+    .replace(/https?:\/\/[^\s"'<>)]+_apis\/wit\/attachments\/[^\s"'<>)]+/gi, "[ADO attachment URL omitted from text]");
+}
+
+function toAttachmentDownloadUrl(rawUrl) {
+  const decodedUrl = decodeHtmlEntities(rawUrl);
+  if (decodedUrl.startsWith("data:image/")) {
+    return decodedUrl;
+  }
+
+  const url = new URL(decodedUrl, getConfig().orgUrl);
+  if (!url.searchParams.has("api-version")) {
+    url.searchParams.set("api-version", API_VERSION);
+  }
+  if (!url.searchParams.has("download")) {
+    url.searchParams.set("download", "true");
+  }
+  return url.toString();
+}
+
+function isAllowedAdoAttachmentUrl(rawUrl) {
+  try {
+    const { orgUrl } = getConfig();
+    const org = new URL(orgUrl);
+    const url = new URL(decodeHtmlEntities(rawUrl), orgUrl);
+    if (url.origin !== org.origin) {
+      return false;
+    }
+    const orgPath = org.pathname.replace(/\/+$/, "");
+    const pathAllowed = orgPath === "" || url.pathname === orgPath || url.pathname.startsWith(`${orgPath}/`);
+    if (!pathAllowed) {
+      return false;
+    }
+    return /\/_apis\/wit\/attachments\//i.test(url.pathname);
+  } catch (_error) {
+    return false;
+  }
+}
+
+function filenameFromUrl(rawUrl) {
+  try {
+    const url = new URL(decodeHtmlEntities(rawUrl), getConfig().orgUrl);
+    return url.searchParams.get("fileName") || url.pathname.split("/").filter(Boolean).pop() || "ado-image";
+  } catch (_error) {
+    return "ado-image";
+  }
+}
+
+function decodeHtmlEntities(value) {
+  return String(value)
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function isImageFilename(name) {
+  return /\.(png|jpe?g|gif|webp|bmp)$/i.test(String(name || ""));
+}
+
+function normalizeMimeType(value) {
+  if (!value) {
+    return "";
+  }
+  return String(value).split(";")[0].trim().toLowerCase();
+}
+
+function mimeTypeFromFilename(name) {
+  const lowerName = String(name || "").toLowerCase();
+  if (lowerName.endsWith(".png")) return "image/png";
+  if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) return "image/jpeg";
+  if (lowerName.endsWith(".gif")) return "image/gif";
+  if (lowerName.endsWith(".webp")) return "image/webp";
+  if (lowerName.endsWith(".bmp")) return "image/bmp";
+  return "";
+}
+
+function isSupportedImageMimeType(mimeType) {
+  return IMAGE_MIME_TYPES.has(normalizeMimeType(mimeType));
+}
+
+function normalizeImageMode(value) {
+  if (value === "inline" || value === "metadata") {
+    return value;
+  }
+  return DEFAULT_IMAGE_MODE;
+}
+
+function extensionFromMimeType(mimeType) {
+  const normalized = normalizeMimeType(mimeType);
+  if (normalized === "image/png") return ".png";
+  if (normalized === "image/jpeg") return ".jpg";
+  if (normalized === "image/gif") return ".gif";
+  if (normalized === "image/webp") return ".webp";
+  if (normalized === "image/bmp") return ".bmp";
+  return "";
+}
+
+function sanitizeFilename(value) {
+  return String(value || "")
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
 }
 
 function requireString(value, name) {

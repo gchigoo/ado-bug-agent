@@ -124,6 +124,7 @@ function runHandshake() {
         assert.deepEqual(
           toolNames,
           [
+            "ado_clear_bug_image_cache",
             "ado_get_bug",
             "ado_get_open_bug_assignees",
             "ado_list_projects",
