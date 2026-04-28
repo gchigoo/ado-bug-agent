@@ -20,22 +20,53 @@ CROSS_PLATFORM.md               Windows, macOS, and Linux notes
 adapters/                       Cursor, Claude Code, and Codex notes
 ```
 
-## Required Environment
+## Credentials
 
-The bundled MCP server reads Azure DevOps through REST APIs.
+The bundled MCP server reads Azure DevOps through REST APIs and resolves credentials in this priority order:
 
-Set:
+1. Host process environment variables: `AZURE_DEVOPS_ORG_URL` + `AZURE_DEVOPS_PAT` (aliases: `AZDO_*`, `ADO_*`).
+2. The path in `ADO_BUG_AGENT_CREDENTIALS_FILE` if set.
+3. `~/.ado-bug-agent/credentials.json`
+4. `<cwd>/.ado-bug-agent/credentials.json`
+
+The PAT needs read access to projects, identities, work items, and comments.
+
+### Recommended: credentials file (Windows-friendly)
+
+`/ado-bug-setup` walks you through creating this file. To do it manually:
+
+```json
+{
+  "orgUrl": "https://dev.azure.com/<org>",
+  "pat": "<pat>"
+}
+```
+
+Save to `~/.ado-bug-agent/credentials.json` (i.e. `%USERPROFILE%\.ado-bug-agent\credentials.json` on Windows). On macOS / Linux, also run `chmod 600` on the file.
+
+This path is preferred when the host (Claude Code / Cursor / Codex) does not propagate shell-only env vars to MCP child processes — a common Windows pitfall. Setting the credentials in `.claude/settings.json.env` is **not** equivalent: that field does not always reach MCP children, and even when it does, the host must be fully restarted.
+
+### Alternative: host environment variables
 
 ```powershell
 $env:AZURE_DEVOPS_ORG_URL = "https://dev.azure.com/<org>"
 $env:AZURE_DEVOPS_PAT = "<pat>"
 ```
 
-The PAT needs read access to projects, identities, work items, and comments.
+Use this path for CI / containers, or when you have a controlled shell that always launches the host. Restart the host after changing env vars; running MCP children inherit env at launch time only.
 
-Node.js 18 or newer is required. The MCP server has no npm dependencies.
+Shell examples for Windows cmd.exe and macOS / Linux are in [CROSS_PLATFORM.md](./CROSS_PLATFORM.md).
 
-Shell examples for Windows cmd.exe and macOS/Linux are in [CROSS_PLATFORM.md](./CROSS_PLATFORM.md).
+### Do NOT put PAT in committable config
+
+- `.ado-bug-agent/config.json` — project / assignee defaults, safe to commit, **never put PAT here**.
+- `.claude/settings.json`, `.cursor/mcp.json`, `mcp.json`, `.mcp.json`, `plugin.json` — committable, never put PAT here either.
+
+The PAT must only live in `~/.ado-bug-agent/credentials.json` (default-gitignored by being outside any repo) or in host environment variables.
+
+### Requirements
+
+Node.js 18 or newer. The MCP server has no npm dependencies.
 
 ## Cursor Local Install
 

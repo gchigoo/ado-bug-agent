@@ -162,10 +162,30 @@ Otherwise keep the standard artifacts.
 
 ## Local Config
 
-Store defaults in:
+Project-level defaults (committable):
 
 ```text
 .ado-bug-agent/config.json
 ```
 
-Command arguments override config values.
+Command arguments override config values. **Never put PAT in this file.**
+
+## Credentials
+
+The MCP server resolves credentials in this priority order:
+
+1. Host process env: `AZURE_DEVOPS_ORG_URL` + `AZURE_DEVOPS_PAT` (aliases: `AZDO_*`, `ADO_*`).
+2. Path in `ADO_BUG_AGENT_CREDENTIALS_FILE`.
+3. `~/.ado-bug-agent/credentials.json` (recommended on Windows).
+4. `<cwd>/.ado-bug-agent/credentials.json`.
+
+Format:
+
+```json
+{
+  "orgUrl": "https://dev.azure.com/<org>",
+  "pat": "<pat>"
+}
+```
+
+When the MCP server returns `ADO credentials not found`, route the user to `/ado-bug-setup`. Do not paste PAT into chat or any artifact file.

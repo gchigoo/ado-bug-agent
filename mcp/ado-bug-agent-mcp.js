@@ -2,6 +2,8 @@
 
 const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
+const fsSync = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -16,23 +18,37 @@ const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image
 
 let stdinBuffer = "";
 
-process.stdin.setEncoding("utf8");
+function startStdioServer() {
+  process.stdin.setEncoding("utf8");
 
-process.stdin.on("data", (chunk) => {
-  stdinBuffer += chunk;
-  processBuffer();
-});
+  process.stdin.on("data", (chunk) => {
+    stdinBuffer += chunk;
+    processBuffer();
+  });
 
-process.stdin.on("error", (error) => {
-  logError(error);
-});
+  process.stdin.on("error", (error) => {
+    logError(error);
+  });
 
-process.stdin.on("end", () => {
-  if (stdinBuffer.trim().length > 0) {
-    handleLine(stdinBuffer.trim());
-    stdinBuffer = "";
+  process.stdin.on("end", () => {
+    if (stdinBuffer.trim().length > 0) {
+      handleLine(stdinBuffer.trim());
+      stdinBuffer = "";
+    }
+  });
+}
+
+if (require.main === module) {
+  startStdioServer();
+}
+
+module.exports = {
+  __test__: {
+    getConfig,
+    looksLikePlaceholder,
+    candidateCredentialFiles
   }
-});
+};
 
 function processBuffer() {
   let newlineIndex;
@@ -316,17 +332,118 @@ function bugResult(value) {
   return { content };
 }
 
+const PLACEHOLDER_PATTERNS = [/^\$\{[^}]+\}$/, /^%[^%]+%$/];
+
+let cachedCredentialsFromFile = null;
+let cachedCredentialsFilePath = null;
+
+function looksLikePlaceholder(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    return true;
+  }
+  return PLACEHOLDER_PATTERNS.some((re) => re.test(trimmed));
+}
+
+function pickCredentialString(value) {
+  return typeof value === "string" && !looksLikePlaceholder(value) ? value : "";
+}
+
+function readCredentialsFromEnv() {
+  return {
+    orgUrl: pickCredentialString(process.env.AZURE_DEVOPS_ORG_URL || process.env.AZDO_ORG_URL || process.env.ADO_ORG_URL),
+    org: pickCredentialString(process.env.AZURE_DEVOPS_ORG || process.env.AZDO_ORG || process.env.ADO_ORG),
+    pat: pickCredentialString(process.env.AZURE_DEVOPS_PAT || process.env.AZDO_PAT || process.env.ADO_PAT)
+  };
+}
+
+function candidateCredentialFiles() {
+  const candidates = [];
+  if (process.env.ADO_BUG_AGENT_CREDENTIALS_FILE) {
+    candidates.push(path.resolve(process.env.ADO_BUG_AGENT_CREDENTIALS_FILE));
+  }
+  const home = os.homedir();
+  if (home) {
+    candidates.push(path.join(home, ".ado-bug-agent", "credentials.json"));
+  }
+  candidates.push(path.resolve(process.cwd(), ".ado-bug-agent", "credentials.json"));
+  return candidates;
+}
+
+function readCredentialsFromFile() {
+  if (cachedCredentialsFromFile && cachedCredentialsFilePath) {
+    try {
+      const stat = fsSync.statSync(cachedCredentialsFilePath);
+      if (stat && stat.isFile()) {
+        return { creds: cachedCredentialsFromFile, path: cachedCredentialsFilePath };
+      }
+    } catch (_error) {
+      cachedCredentialsFromFile = null;
+      cachedCredentialsFilePath = null;
+    }
+  }
+
+  for (const filePath of candidateCredentialFiles()) {
+    let text;
+    try {
+      text = fsSync.readFileSync(filePath, "utf8");
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        continue;
+      }
+      throw new Error(`Failed to read ADO credentials file ${filePath}: ${error.message || error}`);
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      throw new Error(`ADO credentials file ${filePath} is not valid JSON: ${error.message || error}`);
+    }
+
+    const creds = {
+      orgUrl: pickCredentialString(data.orgUrl),
+      org: pickCredentialString(data.org),
+      pat: pickCredentialString(data.pat)
+    };
+
+    if (creds.pat || creds.orgUrl || creds.org) {
+      cachedCredentialsFromFile = creds;
+      cachedCredentialsFilePath = filePath;
+      return { creds, path: filePath };
+    }
+  }
+
+  return { creds: { orgUrl: "", org: "", pat: "" }, path: null };
+}
+
 function getConfig() {
-  const orgUrlRaw = process.env.AZURE_DEVOPS_ORG_URL || process.env.AZDO_ORG_URL || process.env.ADO_ORG_URL;
-  const orgName = process.env.AZURE_DEVOPS_ORG || process.env.AZDO_ORG || process.env.ADO_ORG;
-  const pat = process.env.AZURE_DEVOPS_PAT || process.env.AZDO_PAT || process.env.ADO_PAT;
+  const fromEnv = readCredentialsFromEnv();
+  const { creds: fromFile } = readCredentialsFromFile();
+
+  const orgUrlRaw = fromEnv.orgUrl || fromFile.orgUrl;
+  const orgName = fromEnv.org || fromFile.org;
+  const pat = fromEnv.pat || fromFile.pat;
 
   const orgUrl = orgUrlRaw || (orgName ? `https://dev.azure.com/${orgName}` : "");
-  if (!orgUrl) {
-    throw new Error("Missing AZURE_DEVOPS_ORG_URL or AZURE_DEVOPS_ORG.");
-  }
-  if (!pat) {
-    throw new Error("Missing AZURE_DEVOPS_PAT.");
+
+  if (!orgUrl || !pat) {
+    const missing = [];
+    if (!orgUrl) missing.push("organization URL");
+    if (!pat) missing.push("PAT");
+    const candidates = candidateCredentialFiles();
+    const recommendedFile = candidates.length > 1 ? candidates[candidates.length - 2] : candidates[candidates.length - 1];
+    throw new Error(
+      `ADO credentials not found (missing: ${missing.join(", ")}). ` +
+      `Looked at: process env (AZURE_DEVOPS_ORG_URL / AZURE_DEVOPS_PAT and AZDO_*/ADO_* aliases) ` +
+      `and credentials files: ${candidates.join(", ")}. ` +
+      `Fix: write {"orgUrl":"https://dev.azure.com/<org>","pat":"<pat>"} to ${recommendedFile}, ` +
+      `or set AZURE_DEVOPS_ORG_URL and AZURE_DEVOPS_PAT in the host process environment ` +
+      `(restart Claude Code / Cursor / Codex after changing host env so the MCP child process inherits the new values).`
+    );
   }
 
   return {

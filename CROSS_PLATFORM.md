@@ -19,36 +19,69 @@ node ./mcp/ado-bug-agent-mcp.js
 
 Use `node` explicitly instead of relying on the shebang. This works consistently on Windows, macOS, and Linux.
 
-## Environment Variables
+## Credentials
 
-### Windows PowerShell
+Two supported paths. The MCP server reads in this order: host env → credentials file.
+
+### Recommended: credentials file
+
+```json
+{
+  "orgUrl": "https://dev.azure.com/<org>",
+  "pat": "<pat>"
+}
+```
+
+Default location:
+
+- Windows: `%USERPROFILE%\.ado-bug-agent\credentials.json`
+- macOS / Linux: `~/.ado-bug-agent/credentials.json` (then `chmod 600`)
+
+This path avoids the most common Windows pitfall: shell-only env vars (e.g. set in `.bashrc`) do not reach the host's MCP child processes, and `${VAR}` placeholders in plugin manifests stay unresolved. Use `/ado-bug-setup` to be walked through creating the file.
+
+### Alternative: host environment variables
+
+#### Windows PowerShell
 
 ```powershell
 $env:AZURE_DEVOPS_ORG_URL = "https://dev.azure.com/<org>"
 $env:AZURE_DEVOPS_PAT = "<pat>"
 ```
 
-### Windows cmd.exe
+For persistence across sessions:
+
+```powershell
+[System.Environment]::SetEnvironmentVariable('AZURE_DEVOPS_ORG_URL', 'https://dev.azure.com/<org>', 'User')
+[System.Environment]::SetEnvironmentVariable('AZURE_DEVOPS_PAT', '<pat>', 'User')
+```
+
+Then **fully quit and reopen** Claude Code / Cursor / Codex. The running MCP child process inherits env at launch time only — reload-plugin alone is not enough.
+
+#### Windows cmd.exe
 
 ```bat
 set AZURE_DEVOPS_ORG_URL=https://dev.azure.com/<org>
 set AZURE_DEVOPS_PAT=<pat>
 ```
 
-### macOS / Linux bash or zsh
+For persistence: use `setx`, then restart the host.
+
+#### macOS / Linux bash or zsh
 
 ```bash
 export AZURE_DEVOPS_ORG_URL="https://dev.azure.com/<org>"
 export AZURE_DEVOPS_PAT="<pat>"
 ```
 
-You can also use:
+For persistence: append to `~/.zshrc` / `~/.bashrc`, then restart the host so the new shell launches it with the new env.
 
-```text
-AZURE_DEVOPS_ORG=<org>
-```
+You can also use `AZURE_DEVOPS_ORG=<org>` instead of `AZURE_DEVOPS_ORG_URL`.
 
-instead of `AZURE_DEVOPS_ORG_URL`.
+### What does not work
+
+- Putting PAT in `.claude/settings.json` `env` block — that field does not reliably propagate to MCP child processes, and even when it does the host must be fully restarted.
+- Putting PAT in `.ado-bug-agent/config.json` — that file is committable; the setup wizard will refuse.
+- Setting env vars in PowerShell after the host has started — the running MCP child process keeps the old env. Restart, do not reload.
 
 ## Local Plugin Paths
 

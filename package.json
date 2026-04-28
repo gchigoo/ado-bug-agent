@@ -1,6 +1,6 @@
 {
   "name": "ado-bug-agent",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Turn Azure DevOps Bugs into durable bug reports and code-backed root-cause analysis drafts.",
   "private": true,
   "type": "commonjs",
@@ -13,7 +13,7 @@
   },
   "scripts": {
     "check": "node --check mcp/ado-bug-agent-mcp.js",
-    "test": "node tests/mcp-handshake.js && node tests/mcp-image-cache.js"
+    "test": "node tests/mcp-handshake.js && node tests/mcp-image-cache.js && node tests/mcp-credentials.js"
   },
   "homepage": "https://github.com/Gchigoo/ado-bug-agent",
   "repository": {

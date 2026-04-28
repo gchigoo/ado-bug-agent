@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Credentials file fallback (`~/.ado-bug-agent/credentials.json` and project-local `.ado-bug-agent/credentials.json`), removing the requirement that the host process expose `AZURE_DEVOPS_*` env vars to MCP children. Resolves the common Windows pitfall where shell-only env vars and `.claude/settings.json` `env` blocks do not propagate to MCP child processes.
+- `ADO_BUG_AGENT_CREDENTIALS_FILE` env override for explicit file path.
+- `schemas/credentials.schema.json` documenting the credentials file format.
+- `tests/mcp-credentials.js` covering env precedence, placeholder detection, file fallback, and live file pickup mid-session.
+- `/ado-bug-setup` now starts with a credentials wizard that probes via `ado_list_projects` and walks the user through writing the credentials file when needed.
+
+### Changed
+
+- `getConfig()` detects literal `${VAR}` and `%VAR%` placeholders and treats them as unset, falling through to the credentials file. Error message now lists where it looked and how to fix.
+- README, `mcp/README.md`, `CROSS_PLATFORM.md`, `AGENTS.md`, `skills/ado-bug-agent/SKILL.md`, and `rules/ado-bug-agent.mdc` recommend the credentials file as the primary path on Windows; host env vars become the CI / container path.
+
 ## [0.1.0] - 2026-04-28
 
 ### Added

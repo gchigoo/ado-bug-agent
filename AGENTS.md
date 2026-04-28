@@ -38,14 +38,9 @@ It exposes:
 - `ado_search_identities`
 - `ado_clear_bug_image_cache`
 
-Authentication is passed through environment variables:
+Credentials are resolved in priority order: host env vars → `$ADO_BUG_AGENT_CREDENTIALS_FILE` → `~/.ado-bug-agent/credentials.json` → `<cwd>/.ado-bug-agent/credentials.json`. Env var names: `AZURE_DEVOPS_ORG_URL` + `AZURE_DEVOPS_PAT` (aliases: `AZDO_*`, `ADO_*`). `AZURE_DEVOPS_ORG={org}` works instead of `AZURE_DEVOPS_ORG_URL`. Literal `${VAR}` and `%VAR%` placeholders are detected and treated as unset.
 
-```text
-AZURE_DEVOPS_ORG_URL=https://dev.azure.com/{org}
-AZURE_DEVOPS_PAT={pat}
-```
-
-`AZURE_DEVOPS_ORG={org}` can be used instead of `AZURE_DEVOPS_ORG_URL`.
+When the MCP server returns `ADO credentials not found`, run `/ado-bug-setup`'s credentials wizard. Never paste the PAT into chat, analysis files, report files, or any committable config (`.claude/settings.json`, `.ado-bug-agent/config.json`, `*.mcp.json`, `plugin.json`).
 
 ## Modes
 

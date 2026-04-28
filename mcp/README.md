@@ -18,31 +18,40 @@
 - `ado_get_open_bug_assignees`
 - `ado_search_identities`
 
-## Environment
+## Credentials
 
-Required:
+Resolved in this priority order:
 
-```text
-AZURE_DEVOPS_PAT=<pat>
+1. `AZURE_DEVOPS_ORG_URL` + `AZURE_DEVOPS_PAT` from the host process environment.
+2. JSON file at `$ADO_BUG_AGENT_CREDENTIALS_FILE` (if set).
+3. `~/.ado-bug-agent/credentials.json`
+4. `<cwd>/.ado-bug-agent/credentials.json`
+
+Aliases for env vars: `AZDO_PAT` / `ADO_PAT`, `AZDO_ORG_URL` / `ADO_ORG_URL`, `AZURE_DEVOPS_ORG` / `AZDO_ORG` / `ADO_ORG` (org short name; built into `https://dev.azure.com/<org>`).
+
+Literal `${VAR}` and `%VAR%` placeholders are detected and treated as unset — the server falls through to the credentials file instead of failing later with a confusing URL-parse error.
+
+### Credentials file format
+
+```json
+{
+  "orgUrl": "https://dev.azure.com/<org>",
+  "pat": "<pat>"
+}
 ```
 
-One of:
+Or with org short name:
 
-```text
-AZURE_DEVOPS_ORG_URL=https://dev.azure.com/<org>
-AZURE_DEVOPS_ORG=<org>
+```json
+{
+  "org": "<org>",
+  "pat": "<pat>"
+}
 ```
 
-Aliases are also accepted:
+Schema: `schemas/credentials.schema.json`.
 
-```text
-AZDO_PAT
-ADO_PAT
-AZDO_ORG_URL
-ADO_ORG_URL
-AZDO_ORG
-ADO_ORG
-```
+The file is read on every credentialed call; once a valid file is found, its path is cached. Updating the file mid-session takes effect on the next MCP call.
 
 ## MCP Config
 
