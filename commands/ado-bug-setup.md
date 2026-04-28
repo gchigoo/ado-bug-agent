@@ -14,6 +14,23 @@ Call `ado_list_projects` first to probe whether the bundled MCP server already h
 - If the call succeeds, skip to Step 2.
 - If the error mentions `ADO credentials not found` (or any URL-parse error containing a literal `${...}` placeholder), enter the credentials wizard below.
 
+### Pre-wizard scan: stale PAT in committable configs
+
+Before writing any new credentials file, grep these locations for `AZURE_DEVOPS_PAT`, `AZDO_PAT`, or `ADO_PAT`:
+
+- `<project>/.claude/settings.json`
+- `<project>/.cursor/mcp.json`
+- `<project>/.mcp.json`
+- `<project>/mcp.json`
+- `<project>/.ado-bug-agent/config.json`
+- `~/.claude/settings.json` (user-level)
+
+If any match is found, tell the user verbatim:
+
+> "Found `AZURE_DEVOPS_PAT` in `<file>`. Two reasons to remove it: (1) `${VAR}` substitution in those files does not reliably reach MCP child processes, so the value is not actually doing anything useful; (2) those files are commonly committed, and a plain-text PAT in a committable file is a leak risk. I will write the PAT to `~/.ado-bug-agent/credentials.json` instead. Should I remove the `AZURE_DEVOPS_PAT` entry from `<file>` for you?"
+
+If the user accepts, edit the file to remove only that key (preserve other entries). Do not delete the file. Do not edit `~/.claude/settings.json` without explicit permission per request — surface it and ask.
+
 ### Credentials wizard
 
 The bundled MCP server reads credentials in this priority order:

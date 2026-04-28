@@ -334,9 +334,6 @@ function bugResult(value) {
 
 const PLACEHOLDER_PATTERNS = [/^\$\{[^}]+\}$/, /^%[^%]+%$/];
 
-let cachedCredentialsFromFile = null;
-let cachedCredentialsFilePath = null;
-
 function looksLikePlaceholder(value) {
   if (typeof value !== "string") {
     return false;
@@ -362,8 +359,9 @@ function readCredentialsFromEnv() {
 
 function candidateCredentialFiles() {
   const candidates = [];
-  if (process.env.ADO_BUG_AGENT_CREDENTIALS_FILE) {
-    candidates.push(path.resolve(process.env.ADO_BUG_AGENT_CREDENTIALS_FILE));
+  const explicit = pickCredentialString(process.env.ADO_BUG_AGENT_CREDENTIALS_FILE);
+  if (explicit) {
+    candidates.push(path.resolve(explicit));
   }
   const home = os.homedir();
   if (home) {
@@ -373,19 +371,10 @@ function candidateCredentialFiles() {
   return candidates;
 }
 
+// Re-read on every call. The file is small (~100 bytes) and sync read is
+// negligible; caching here previously caused stale PAT after the user rotated
+// credentials mid-session.
 function readCredentialsFromFile() {
-  if (cachedCredentialsFromFile && cachedCredentialsFilePath) {
-    try {
-      const stat = fsSync.statSync(cachedCredentialsFilePath);
-      if (stat && stat.isFile()) {
-        return { creds: cachedCredentialsFromFile, path: cachedCredentialsFilePath };
-      }
-    } catch (_error) {
-      cachedCredentialsFromFile = null;
-      cachedCredentialsFilePath = null;
-    }
-  }
-
   for (const filePath of candidateCredentialFiles()) {
     let text;
     try {
@@ -394,25 +383,23 @@ function readCredentialsFromFile() {
       if (error && error.code === "ENOENT") {
         continue;
       }
-      throw new Error(`Failed to read ADO credentials file ${filePath}: ${error.message || error}`);
+      throw new Error(`ADO credentials file at ${filePath} could not be read; check the file exists and the host process has permission to read it.`);
     }
 
     let data;
     try {
       data = JSON.parse(text);
-    } catch (error) {
-      throw new Error(`ADO credentials file ${filePath} is not valid JSON: ${error.message || error}`);
+    } catch (_error) {
+      throw new Error(`ADO credentials file at ${filePath} contains invalid JSON; expected an object with "orgUrl" and "pat" string fields.`);
     }
 
     const creds = {
-      orgUrl: pickCredentialString(data.orgUrl),
-      org: pickCredentialString(data.org),
-      pat: pickCredentialString(data.pat)
+      orgUrl: pickCredentialString(data && data.orgUrl),
+      org: pickCredentialString(data && data.org),
+      pat: pickCredentialString(data && data.pat)
     };
 
     if (creds.pat || creds.orgUrl || creds.org) {
-      cachedCredentialsFromFile = creds;
-      cachedCredentialsFilePath = filePath;
       return { creds, path: filePath };
     }
   }

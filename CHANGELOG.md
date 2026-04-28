@@ -10,14 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Credentials file fallback (`~/.ado-bug-agent/credentials.json` and project-local `.ado-bug-agent/credentials.json`), removing the requirement that the host process expose `AZURE_DEVOPS_*` env vars to MCP children. Resolves the common Windows pitfall where shell-only env vars and `.claude/settings.json` `env` blocks do not propagate to MCP child processes.
-- `ADO_BUG_AGENT_CREDENTIALS_FILE` env override for explicit file path.
+- `ADO_BUG_AGENT_CREDENTIALS_FILE` env override for explicit file path. Literal `${VAR}` and `%VAR%` placeholders in this env var are detected and ignored so unresolved manifest substitutions fall through to the home-dir candidate cleanly.
 - `schemas/credentials.schema.json` documenting the credentials file format.
-- `tests/mcp-credentials.js` covering env precedence, placeholder detection, file fallback, and live file pickup mid-session.
-- `/ado-bug-setup` now starts with a credentials wizard that probes via `ado_list_projects` and walks the user through writing the credentials file when needed.
+- `tests/mcp-credentials.js` covering env precedence, placeholder detection, file fallback, env-overrides-file, mid-session pickup, **PAT rotation in same file path**, **placeholder pollution of the credentials-file env var**, and **PAT non-leakage across all throw paths** (parse error, missing org, missing PAT).
+- `/ado-bug-setup` now starts with a credentials wizard that probes via `ado_list_projects`, scans `.claude/settings.json` / `.cursor/mcp.json` / `.ado-bug-agent/config.json` / `~/.claude/settings.json` for stale PAT entries and offers to remove them, then walks the user through writing `~/.ado-bug-agent/credentials.json`.
 
 ### Changed
 
 - `getConfig()` detects literal `${VAR}` and `%VAR%` placeholders and treats them as unset, falling through to the credentials file. Error message now lists where it looked and how to fix.
+- Credentials file is re-read on every credentialed MCP call (no in-process cache). Mid-session rotation takes effect immediately on the next call without host restart.
+- Credentials-file read and JSON-parse error messages no longer include `error.message`, since `JSON.parse` errors can echo input fragments and the credentials file may contain a PAT.
 - README, `mcp/README.md`, `CROSS_PLATFORM.md`, `AGENTS.md`, `skills/ado-bug-agent/SKILL.md`, and `rules/ado-bug-agent.mdc` recommend the credentials file as the primary path on Windows; host env vars become the CI / container path.
 
 ## [0.1.0] - 2026-04-28

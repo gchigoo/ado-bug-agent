@@ -51,7 +51,7 @@ Or with org short name:
 
 Schema: `schemas/credentials.schema.json`.
 
-The file is read on every credentialed call; once a valid file is found, its path is cached. Updating the file mid-session takes effect on the next MCP call.
+The file is read on every credentialed MCP call (no in-process cache), so updating it mid-session — including PAT rotation — takes effect on the very next call without any host restart.
 
 ## MCP Config
 

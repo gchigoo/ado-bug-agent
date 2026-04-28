@@ -151,14 +151,93 @@ function captureGetConfigError(envOverrides) {
     assert.ok(/credentials.json/i.test(error.message), `error should mention credentials.json path: ${error.message}`);
   }
 
-  // Test 9: error message must not contain the literal PAT value
+  // Test 9: error messages must not echo a real-looking PAT from any throw path.
+  // Sentinel is a fake PAT-shaped string so that a substring match is meaningful.
   {
-    const error = captureGetConfigError({
-      AZURE_DEVOPS_ORG_URL: "https://dev.azure.com/x",
-      AZURE_DEVOPS_PAT: ""
-    });
-    assert.ok(error, "expected error when PAT is empty");
-    assert.ok(!error.message.includes("supersecret"), "error message must never leak PAT");
+    const sentinel = "won1FcJYqTzaiPS7bY6qWC66UW4v6yNS-FAKE-SENTINEL-DO-NOT-USE";
+
+    // Path A: missing org URL, PAT is set. Must not echo the PAT in the
+    // "credentials not found" message.
+    {
+      const error = captureGetConfigError({
+        AZURE_DEVOPS_PAT: sentinel
+      });
+      assert.ok(error, "Path A: expected error when org URL is missing");
+      assert.ok(!error.message.includes(sentinel), `Path A: PAT leaked into error: ${error.message}`);
+    }
+
+    // Path B: credentials file contains malformed JSON whose body includes the
+    // sentinel PAT. Parse-error path must not echo the file body.
+    {
+      const dir = makeTempDir();
+      try {
+        const filePath = path.join(dir, "credentials.json");
+        fs.writeFileSync(filePath, `{ "pat": "${sentinel}", broken json`);
+        const error = (function () {
+          try {
+            return withIsolatedEnv(
+              { ADO_BUG_AGENT_CREDENTIALS_FILE: filePath },
+              { isolatedHome: dir, cwd: dir },
+              (api) => {
+                api.getConfig();
+                return null;
+              }
+            );
+          } catch (e) {
+            return e;
+          }
+        })();
+        assert.ok(error, "Path B: expected JSON parse error to surface");
+        assert.ok(!error.message.includes(sentinel), `Path B: PAT leaked into JSON parse error: ${error.message}`);
+        assert.ok(/invalid JSON/i.test(error.message), `Path B: expected invalid-JSON message, got: ${error.message}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  }
+
+  // Test 9b: ADO_BUG_AGENT_CREDENTIALS_FILE with literal ${VAR} placeholder
+  // must be treated as unset and fall through to home-dir candidate, not
+  // produce a confusing absolute path with the placeholder embedded.
+  {
+    const dir = makeTempDir();
+    try {
+      const homeFile = path.join(dir, ".ado-bug-agent", "credentials.json");
+      fs.mkdirSync(path.dirname(homeFile), { recursive: true });
+      fs.writeFileSync(homeFile, JSON.stringify({ orgUrl: "https://dev.azure.com/home", pat: "home-pat" }));
+      withIsolatedEnv(
+        { ADO_BUG_AGENT_CREDENTIALS_FILE: "${ADO_BUG_AGENT_CREDENTIALS_FILE}" },
+        { isolatedHome: dir, cwd: dir },
+        (api) => {
+          const result = api.getConfig();
+          assert.equal(result.orgUrl, "https://dev.azure.com/home", "should fall through to home-dir file when env value is unresolved placeholder");
+          assert.equal(result.pat, "home-pat");
+        }
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // Test 9c: PAT rotation in credentials file must be picked up immediately
+  // (no in-process cache that holds the old value).
+  {
+    const dir = makeTempDir();
+    try {
+      const filePath = path.join(dir, "credentials.json");
+      fs.writeFileSync(filePath, JSON.stringify({ orgUrl: "https://dev.azure.com/r", pat: "old-pat" }));
+      withIsolatedEnv(
+        { ADO_BUG_AGENT_CREDENTIALS_FILE: filePath },
+        { isolatedHome: dir, cwd: dir },
+        (api) => {
+          assert.equal(api.getConfig().pat, "old-pat", "first read should see old PAT");
+          fs.writeFileSync(filePath, JSON.stringify({ orgUrl: "https://dev.azure.com/r", pat: "rotated-pat" }));
+          assert.equal(api.getConfig().pat, "rotated-pat", "rotation in same file path must be visible without restart");
+        }
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   }
 
   // Test 10a: credentials file written between calls is picked up (no negative cache)
