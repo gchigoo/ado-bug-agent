@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "ado-bug-agent": {
+      "command": "node",
+      "args": [
+        "./mcp/ado-bug-agent-mcp.js"
+      ],
+      "env": {
+        "AZURE_DEVOPS_ORG_URL": "${AZURE_DEVOPS_ORG_URL}",
+        "AZURE_DEVOPS_PAT": "${AZURE_DEVOPS_PAT}"
+      }
+    }
+  }
+}

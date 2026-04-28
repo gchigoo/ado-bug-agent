@@ -1,0 +1,40 @@
+{
+  "name": "ado-bug-agent",
+  "version": "0.1.0",
+  "description": "Turn Azure DevOps Bugs into durable bug reports and code-backed root-cause analysis drafts.",
+  "author": {
+    "name": "Gchigoo",
+    "email": "stan.guo@mail.ru",
+    "url": "https://github.com/Gchigoo"
+  },
+  "homepage": "https://github.com/Gchigoo/ado-bug-agent",
+  "repository": "https://github.com/Gchigoo/ado-bug-agent",
+  "license": "MIT",
+  "keywords": [
+    "azure-devops",
+    "bug-analysis",
+    "root-cause-analysis",
+    "mcp",
+    "ado"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "ADO Bug Agent",
+    "shortDescription": "Analyze Azure DevOps Bugs into report drafts.",
+    "longDescription": "Fetch Azure DevOps Bugs through a bundled MCP server, create durable bug reports, and draft code-backed root-cause analyses for later implementation.",
+    "developerName": "Gchigoo",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Set up my ADO Bug defaults.",
+      "Analyze ADO Bug 41765.",
+      "Scan my assigned ADO Bugs."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

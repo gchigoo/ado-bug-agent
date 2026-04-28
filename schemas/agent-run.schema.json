@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ADO Bug Agent Run State",
+  "type": "object",
+  "required": [
+    "adoId",
+    "adoRevision",
+    "status",
+    "reportPath",
+    "lastFetchedAt",
+    "sourceTitle"
+  ],
+  "properties": {
+    "adoId": {
+      "type": "integer"
+    },
+    "adoRevision": {
+      "type": "integer"
+    },
+    "project": {
+      "type": "string"
+    },
+    "assignedTo": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ado-fetched",
+        "report-draft",
+        "report-confirmed",
+        "analysis-draft",
+        "analysis-confirmed"
+      ]
+    },
+    "reportPath": {
+      "type": "string"
+    },
+    "analysisPath": {
+      "type": "string"
+    },
+    "lastFetchedAt": {
+      "type": "string"
+    },
+    "lastAnalyzedAt": {
+      "type": "string"
+    },
+    "sourceTitle": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

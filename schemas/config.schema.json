@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ADO Bug Agent Local Config",
+  "type": "object",
+  "required": [
+    "project",
+    "assignedTo",
+    "limit",
+    "postComment",
+    "updatedAt"
+  ],
+  "properties": {
+    "project": {
+      "type": "string"
+    },
+    "assignedTo": {
+      "type": "string"
+    },
+    "assignedToDisplayName": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50
+    },
+    "postComment": {
+      "type": "boolean"
+    },
+    "updatedAt": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}
