@@ -74,7 +74,14 @@ commands/
 
 ## Claude Code
 
-Use `adapters/claude/README.md`. The package provides command prompts and a skill that can be copied or symlinked into `.claude/`.
+Install from the marketplace bundled in this repo:
+
+```text
+/plugin marketplace add Gchigoo/ado-bug-agent
+/plugin install ado-bug-agent@ado-bug-agent
+```
+
+For manual install, see `adapters/claude/README.md` — the package also provides command prompts and a skill that can be copied or symlinked into `.claude/`.
 
 ## Codex
 
