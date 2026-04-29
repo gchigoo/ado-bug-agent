@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-29
+
+### Fixed
+
+- Pin ADO image fetching to this plugin's `ado_get_bug`. When both this plugin and Microsoft's official Azure DevOps MCP (`mcp__azure-devops__*`) are installed, the agent could pick `wit_get_work_item_attachment` and embed full base64 in the tool result, causing host-side truncation ("screenshot output is too large to inline") and downstream Claude API errors ("Could not process image"). AGENTS.md, the Cursor rule, SKILL.md, and the analyze / scan / batch-plan commands now state explicitly that ADO screenshots must come from `ado_get_bug` and that external attachment endpoints are forbidden, with the failure mode spelled out. The `ado_bug_analyze` and `ado_bug_scan` MCP prompts carry the same hard rule.
+
+### Added
+
+- `imageEvidence` entries now include `inlineSafe: boolean` and `inlineSafeThresholdBytes`. Cached images larger than the threshold (default 700 KB, override with `ADO_BUG_AGENT_INLINE_SAFE_BYTES`) are flagged so the agent skips Read on them and summarizes from ADO text/comments instead of triggering host inline-image limits.
+
 ## [0.2.0] - 2026-04-29
 
 ### Added
@@ -60,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   negotiation (`2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`).
 - Zero npm dependencies; native `fetch` only.
 
-[Unreleased]: https://github.com/Gchigoo/ado-bug-agent/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Gchigoo/ado-bug-agent/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Gchigoo/ado-bug-agent/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Gchigoo/ado-bug-agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Gchigoo/ado-bug-agent/releases/tag/v0.1.0

@@ -10,7 +10,7 @@
       "name": "ado-bug-agent",
       "source": "./",
       "description": "Move Azure DevOps Bugs through report, analysis, repair planning, and controlled fix; merging is left to normal PR review.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "author": {
         "name": "Gchigoo",
         "email": "stan.guo@mail.ru",

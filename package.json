@@ -1,6 +1,6 @@
 {
   "name": "ado-bug-agent",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Move Azure DevOps Bugs through report, analysis, repair planning, and controlled fix; merging is left to normal PR review.",
   "private": true,
   "type": "commonjs",
