@@ -61,6 +61,9 @@ Node.js 18+ must be available as `node`.
 /ado-bug-analyze 41765
 /ado-bug-analyze "Bug title"
 /ado-bug-scan
+/ado-bug-batch-plan
+/ado-bug-batch-fix
+/ado-bug-fix 41765
 ```
 
 Cursor should load:

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ADO Bug Agent Active File Locks",
+  "type": "object",
+  "required": ["batchId", "locks"],
+  "properties": {
+    "batchId": { "type": "string" },
+    "locks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["wave", "files", "status"],
+        "properties": {
+          "wave": { "type": "integer", "minimum": 1 },
+          "issues": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "files": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "status": { "type": "string", "enum": ["planned", "active", "completed"] },
+          "owner": { "type": "string" },
+          "updatedAt": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

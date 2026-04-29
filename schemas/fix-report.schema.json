@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ADO Bug Agent Fix Report",
+  "type": "object",
+  "required": ["issue", "adoId", "status", "branch", "selectedOption", "declaredTouchedFiles", "actualTouchedFiles", "testsRun"],
+  "properties": {
+    "issue": { "type": "string" },
+    "adoId": { "type": "integer" },
+    "status": {
+      "type": "string",
+      "enum": ["in-progress", "completed", "incomplete", "blocked", "scope-change-requested"]
+    },
+    "batchId": { "type": "string" },
+    "wave": { "type": "integer", "minimum": 1 },
+    "branch": { "type": "string" },
+    "worktree": { "type": "string" },
+    "selectedOption": { "type": "string" },
+    "declaredTouchedFiles": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "actualTouchedFiles": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "testsRun": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "status"],
+        "properties": {
+          "command": { "type": "string" },
+          "status": { "type": "string", "enum": ["passed", "failed", "skipped", "blocked"] },
+          "notes": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "scopeChanges": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "knownRisks": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

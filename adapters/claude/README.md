@@ -15,6 +15,9 @@ Copy or symlink these directories into the target project:
 .claude/commands/ado-bug-setup.md
 .claude/commands/ado-bug-analyze.md
 .claude/commands/ado-bug-scan.md
+.claude/commands/ado-bug-batch-plan.md
+.claude/commands/ado-bug-batch-fix.md
+.claude/commands/ado-bug-fix.md
 .claude/skills/ado-bug-agent/SKILL.md
 ```
 
@@ -29,6 +32,9 @@ The MCP entry is cross-platform as long as Claude Code resolves `./mcp/ado-bug-a
 /ado-bug-analyze 41765
 /ado-bug-analyze "Bug title"
 /ado-bug-scan
+/ado-bug-batch-plan
+/ado-bug-batch-fix
+/ado-bug-fix 41765
 ```
 
 ## Required Environment
@@ -56,4 +62,4 @@ AZURE_DEVOPS_PAT=<pat>
 
 Node.js 18+ must be available as `node`.
 
-Claude must stop after `analysis-draft`. It should not modify business code or commit as part of this plugin workflow.
+Claude must stop at human checkpoints. Analyze, scan, and batch-plan do not modify business code. `/ado-bug-fix` may modify code only after a confirmed analysis, accepted repair scope, and single-issue or wave worktree check. Do not commit by default. Merging the fix branch is the human's responsibility through normal PR review.

@@ -19,3 +19,6 @@ Thumbs.db
 
 # Test artifacts
 coverage/
+
+# Internal design docs (not shipped with the plugin)
+docs/

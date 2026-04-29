@@ -1,7 +1,7 @@
 {
   "name": "ado-bug-agent",
   "version": "0.1.2",
-  "description": "Turn Azure DevOps Bugs into durable bug reports and code-backed root-cause analysis drafts.",
+  "description": "Move Azure DevOps Bugs through report, analysis, repair planning, and controlled fix; merging is left to normal PR review.",
   "author": {
     "name": "Gchigoo",
     "email": "stan.guo@mail.ru",
@@ -21,8 +21,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "ADO Bug Agent",
-    "shortDescription": "Analyze Azure DevOps Bugs into report drafts.",
-    "longDescription": "Fetch Azure DevOps Bugs through a bundled MCP server, create durable bug reports, and draft code-backed root-cause analyses for later implementation.",
+    "shortDescription": "Analyze and repair Azure DevOps Bugs safely.",
+    "longDescription": "Fetch Azure DevOps Bugs through a bundled MCP server, create durable issue reports, draft code-backed root-cause analyses, plan controlled repairs, and run controlled fixes. Merging is the human's responsibility through normal PR review.",
     "developerName": "Gchigoo",
     "category": "Productivity",
     "capabilities": [
@@ -33,7 +33,9 @@
     "defaultPrompt": [
       "Set up my ADO Bug defaults.",
       "Analyze ADO Bug 41765.",
-      "Scan my assigned ADO Bugs."
+      "Scan my assigned ADO Bugs.",
+      "Build an ADO Bug batch plan.",
+      "Fix an approved ADO Bug batch wave."
     ],
     "brandColor": "#2563EB"
   }

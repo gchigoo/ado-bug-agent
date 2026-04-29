@@ -8,4 +8,4 @@ This plugin is packaged for three agent hosts:
 | Claude Code | `.claude-plugin/plugin.json`, `commands/`, `skills/ado-bug-agent/SKILL.md`, `AGENTS.md` |
 | Codex | `.codex-plugin/plugin.json`, `AGENTS.md`, `skills/`, `mcp.json` |
 
-All adapters share the same bundled MCP server and the same staged bug-analysis method.
+All adapters share the same bundled MCP server and the same ADO Bug Agent lifecycle: report, analysis, repair planning, and controlled fix. Merging is left to the human's normal PR review.

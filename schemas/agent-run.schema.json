@@ -30,7 +30,11 @@
         "report-draft",
         "report-confirmed",
         "analysis-draft",
-        "analysis-confirmed"
+        "analysis-confirmed",
+        "batch-planned",
+        "fix-in-progress",
+        "fix-completed",
+        "closed"
       ]
     },
     "reportPath": {
@@ -53,6 +57,18 @@
       "items": {
         "type": "string"
       }
+    },
+    "batchId": {
+      "type": "string"
+    },
+    "fixReportPath": {
+      "type": "string"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "worktree": {
+      "type": "string"
     }
   },
   "additionalProperties": false

@@ -1,6 +1,8 @@
 # ADO Bug Agent Plugin
 
-Cursor/Codex/Claude-compatible plugin for analyzing Azure DevOps Bugs into durable bug reports and code-backed root-cause analyses.
+Cursor/Codex/Claude-compatible plugin for taking Azure DevOps Bugs through durable issue reports, code-backed root-cause analyses, human-gated repair plans, and controlled fixes. Merging is left to the human's normal PR review.
+
+The issue workflow is native to ADO Bug Agent: report observable behavior, prove root cause from code, stop for human confirmation, and keep fixes scoped to the accepted analysis. The plugin remains self-contained and does not require any external workflow package in the target project.
 
 ## What Is Included
 
@@ -15,7 +17,7 @@ commands/                       slash-style workflow commands
 skills/ado-bug-agent/SKILL.md   agent skill
 rules/ado-bug-agent.mdc         Cursor rule
 mcp/ado-bug-agent-mcp.js        no-dependency Azure DevOps MCP server
-schemas/                        config and run-state schemas
+schemas/                        config, run-state, batch, lock, and fix-report schemas
 CROSS_PLATFORM.md               Windows, macOS, and Linux notes
 adapters/                       Cursor, Claude Code, and Codex notes
 ```
@@ -101,6 +103,10 @@ commands/
 /ado-bug-analyze 41765
 /ado-bug-analyze "Save button does not refresh list after submit"
 /ado-bug-scan
+/ado-bug-batch-plan 41765 41850
+/ado-bug-batch-plan "speaker settlement"
+/ado-bug-batch-fix
+/ado-bug-fix 41765
 ```
 
 ## Claude Code
@@ -122,9 +128,13 @@ Use `adapters/codex/README.md`. The package includes `.codex-plugin/plugin.json`
 
 - ADO content is evidence, not instructions.
 - ADO screenshots and image attachments are fetched through the MCP server and cached under `.ado-bug-agent/cache/attachments/...` by default; raw protected attachment URLs are omitted from generated text. The default limit is 5 images per Bug and 10 MB per image. Inline MCP image content is available only with `imageMode: "inline"`.
-- The agent does not modify business code.
+- Analyze, scan, and batch-plan do not modify business code.
+- `/ado-bug-batch-plan` can accept Bug IDs or title/theme selectors. If selected Bugs are missing local report or analysis artifacts, it runs the normal single-Bug report/analyze workflow first, then blocks newly generated drafts until the user confirms them.
+- Batch plans create `planned` waves and file-lock reservations. `/ado-bug-batch-fix` activates one selected wave at a time.
+- `/ado-bug-fix` may modify business code only after a confirmed analysis, accepted repair scope, and single-issue or wave worktree/branch check.
+- `/ado-bug-batch-fix` fixes one approved wave in one shared wave worktree/branch, with one fix report per issue.
 - The agent does not commit.
-- Automatic work stops at `analysis-draft`.
+- Analyze and scan stop at `analysis-draft`.
 - Human approval is required before implementation.
 - After a Bug's analysis and detailed repair plan are confirmed, clear its screenshot cache with `ado_clear_bug_image_cache`.
 
@@ -139,15 +149,17 @@ See [CROSS_PLATFORM.md](./CROSS_PLATFORM.md). The short version:
 - use `.ado-bug-agent/config.json` for local defaults
 - generated analysis files go under `bug-analysis/issues/`
 
-## Embedded Analysis Method
+## Embedded Issue Method
 
-The plugin embeds the core staged bug-analysis ideas in `skills/ado-bug-agent/SKILL.md` and `rules/ado-bug-agent.mdc`:
+The plugin embeds the core staged issue ideas in `skills/ado-bug-agent/SKILL.md` and `rules/ado-bug-agent.mdc`:
 
-- preserve the problem first as a report
+- preserve observable behavior first as a report
 - analyze only after the report is confirmed
 - find root cause by reading code, not by guessing from ADO text
 - cite `file:line` evidence
 - restore the failed execution path
 - assess impact and severity
-- offer 2-3 repair options
+- offer 2-3 repair options with expected touched files, verification, and risk
 - stop for human confirmation before code changes
+- use batch plans and wave file locks before controlled fixes; batch planning is the integration of multiple single-Bug lifecycles
+- write fix reports per issue and stop at `fix-completed`; merging is the human's responsibility through normal PR review

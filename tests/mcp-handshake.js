@@ -142,6 +142,11 @@ function runHandshake() {
           promptsRes.result.prompts.length >= 3,
           `prompts/list: expected at least 3 prompts, got ${promptsRes.result.prompts.length}`
         );
+        const promptNames = promptsRes.result.prompts.map((p) => p.name).sort();
+        assert.ok(promptNames.includes("ado_bug_batch_plan"), "prompts/list: missing ado_bug_batch_plan");
+        assert.ok(promptNames.includes("ado_bug_batch_fix"), "prompts/list: missing ado_bug_batch_fix");
+        assert.ok(promptNames.includes("ado_bug_fix"), "prompts/list: missing ado_bug_fix");
+        assert.ok(!promptNames.includes("ado_bug_merge_gate"), "prompts/list: ado_bug_merge_gate should be removed");
 
         send({ jsonrpc: "2.0", id: 4, method: "this/does/not/exist" });
         const errRes = await waitFor(4);

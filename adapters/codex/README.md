@@ -52,6 +52,9 @@ Node.js 18+ must be available as `node`.
 Use the ado-bug-agent skill to set up defaults.
 Use the ado-bug-agent skill to analyze ADO Bug 41765.
 Use the ado-bug-agent skill to scan my assigned ADO Bugs.
+Use the ado-bug-agent skill to build an ADO Bug batch plan.
+Use the ado-bug-agent skill to fix an approved ADO Bug batch wave.
+Use the ado-bug-agent skill to fix one confirmed ADO Bug.
 ```
 
-Codex should create or update bug report and analysis files only, then stop for human confirmation.
+Codex should stop at human checkpoints. Analyze, scan, and batch-plan are read/planning modes. `/ado-bug-fix` may modify code only after confirmed scope and worktree checks. Do not commit by default. Merging the fix branch is the human's responsibility through normal PR review.

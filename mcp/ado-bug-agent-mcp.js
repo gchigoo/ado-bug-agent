@@ -8,6 +8,13 @@ const path = require("node:path");
 
 const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const DEFAULT_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
+const SERVER_VERSION = (() => {
+  try {
+    return require("../package.json").version || "0.0.0";
+  } catch (_error) {
+    return "0.0.0";
+  }
+})();
 const API_VERSION = "7.1";
 const COMMENT_API_VERSION = "7.1-preview.3";
 const DEFAULT_IMAGE_LIMIT = 5;
@@ -103,7 +110,7 @@ async function handleMessage(message) {
         },
         serverInfo: {
           name: "ado-bug-agent",
-          version: "0.1.0"
+          version: SERVER_VERSION
         }
       });
       return;
@@ -246,6 +253,28 @@ function listPrompts() {
       name: "ado_bug_scan",
       description: "Scan open Bugs for the configured project and assignee.",
       arguments: []
+    },
+    {
+      name: "ado_bug_batch_plan",
+      description: "Build a human-reviewed repair batch plan from Bug IDs or title/theme selectors, generating missing analysis drafts when needed.",
+      arguments: [
+        { name: "input", description: "Optional Bug IDs, title/theme selectors, and/or batch id", required: false }
+      ]
+    },
+    {
+      name: "ado_bug_fix",
+      description: "Fix one confirmed Bug by id, issue slug, or title/theme selector.",
+      arguments: [
+        { name: "issue", description: "Issue directory name or ADO Bug ID", required: true },
+        { name: "batch", description: "Batch identifier", required: false }
+      ]
+    },
+    {
+      name: "ado_bug_batch_fix",
+      description: "Batch-fix one approved wave in a shared wave worktree.",
+      arguments: [
+        { name: "input", description: "Optional batch id and wave number", required: false }
+      ]
     }
   ];
 }
@@ -258,10 +287,23 @@ function getPrompt(params) {
   }
   if (name === "ado_bug_analyze") {
     const bug = args.bug || "<bug id or title>";
-    return promptResult(`Analyze Azure DevOps Bug ${bug}. Use the bundled ADO MCP tools, including ado_get_bug image evidence when available. Keep ado_get_bug imageMode at the default "cache" unless inline image content is explicitly needed. Create or update the bug report, then draft the root-cause analysis. Do not modify business code or commit.`);
+    return promptResult(`Analyze Azure DevOps Bug ${bug}. Use the bundled ADO MCP tools, including ado_get_bug image evidence when available. Keep ado_get_bug imageMode at the default "cache" unless inline image content is explicitly needed. Follow the ADO Bug Agent issue lifecycle: create or update an observable-facts report first, then draft a code-backed root-cause analysis with file:line evidence, 2-3 repair options, expected touched files, verification, and risk. Stop at the human checkpoint. Do not modify business code or commit.`);
   }
   if (name === "ado_bug_scan") {
-    return promptResult("Scan open Azure DevOps Bugs for the configured project and assignee. If multiple Bugs are eligible and the host supports subagents, coordinate one isolated subagent per Bug with 2-3 active at a time and collect only summaries plus artifact paths. For each eligible Bug, create or update the bug report and root-cause analysis draft. Do not modify business code or commit.");
+    return promptResult("Scan open Azure DevOps Bugs for the configured project and assignee. If multiple Bugs are eligible and the host supports subagents, coordinate one isolated subagent per Bug with 2-3 active at a time and collect only summaries plus artifact paths. For each eligible Bug, use the ADO Bug Agent issue lifecycle: observable-facts report first, then code-backed root-cause analysis with file:line evidence, repair options, expected touched files, verification, and risk. Parallelize analysis only. Do not modify business code or commit.");
+  }
+  if (name === "ado_bug_batch_plan") {
+    const input = args.input || "";
+    return promptResult(`Build an ADO Bug repair batch plan. Input: ${input || "<auto>"}. Numeric inputs are ADO Bug IDs; non-numeric inputs are title/theme selectors. If selected Bugs are missing local report or analysis artifacts, fetch them through the bundled ADO MCP tools and run the normal single-Bug report/analyze lifecycle first, stopping generated work at analysis-draft. If no selectors are provided, include all analysis-confirmed issues under bug-analysis/issues. For every candidate, sync confirmation: when analysis frontmatter is confirmed and agent-run status is still analysis-draft, advance agent-run to analysis-confirmed. Only analysis-confirmed Bugs with an accepted repair option and non-empty fix_scope can enter repair waves; put drafts or incomplete Bugs in blocked with the missing step and next action. Group ready issues into planned waves, record each wave's shared branch/worktree, and write batch-plan.json plus conflict-matrix.md, active-file-locks.json with planned reservations, and run-summary.md under bug-analysis/batches/{batch-id}/. For every ready issue, advance agent-run to batch-planned and stamp batchId. Set batch status to draft and clear image cache for confirmed Bugs that landed in ready waves. Do not modify business code, create worktrees, merge, or commit. Stop for human batch approval, then use ado-bug-batch-fix for approved waves.`);
+  }
+  if (name === "ado_bug_fix") {
+    const issue = args.issue || "<issue-or-ado-id>";
+    const batch = args.batch || "<batch id if any>";
+    return promptResult(`Fix exactly one ADO Bug: ${issue}. The input may be an ADO ID, issue slug, or title/theme selector; if multiple confirmed Bugs match, ask me to choose one or switch to batch-fix. Use batch ${batch} when provided, otherwise infer the latest approved or active batch containing the issue. Before editing, read the confirmed report/analysis, selected repair option, agent-run.json, and batch plan. Sync confirmation: when frontmatter is confirmed and agent-run is still analysis-draft, advance agent-run to analysis-confirmed; if frontmatter is still draft, stop. Verify this is either a single-issue worktree on branch fix/ado-{id}-{slug} or an approved wave worktree on branch fix/ado-{batch-id}-wave-{wave}; if the worktree does not exist, create it with git worktree add from the batch baseBranch (wave mode) or the repository default branch (single-issue mode). Skip the file-lock check when no batch is associated; otherwise reject conflicts with another active wave. Modify only expected touched files unless I approve a scope change. Before the first edit, advance agent-run to fix-in-progress and stamp branch + worktree. Run the declared verification, write the fix report with selectedOption set, and on completion advance agent-run to fix-completed. Do not commit, merge, or push unless I explicitly ask.`);
+  }
+  if (name === "ado_bug_batch_fix") {
+    const input = args.input || "";
+    return promptResult(`Batch-fix confirmed ADO Bugs. Input: ${input || "<auto>"}. Numeric inputs are ADO Bug IDs; non-numeric inputs are title/theme selectors. If no batch is provided, use the latest approved or active batch; if no suitable batch exists, create or refresh a draft batch plan and stop for approval. Resolve approval gate: if batch is draft, stop and ask me to approve before writing status: approved + approvedAt. Choose one wave (arg or first planned/active). Sync confirmation per issue (frontmatter confirmed → agent-run analysis-confirmed); refuse to start any wave with unconfirmed analyses. Use one shared wave worktree and branch for the entire wave, preferably ../ado-bug-worktrees/{batch-id}-wave-{wave} and fix/ado-{batch-id}-wave-{wave}; create it with git worktree add from baseBranch when missing. Activate only the selected wave's planned file locks; flip batch status to active and per-issue agent-run to fix-in-progress when editing starts. Do not create one branch per Bug inside the same wave. Fix all issues in the wave in that worktree, write one fix report per issue with selectedOption, advance agent-run to fix-completed as each fix report becomes completed, and on wave completion flip the wave's lock from active to completed. When this is the last wave and every wave is completed, set batch status to closed. Update run-summary.md and stop for human confirmation before another wave. Subagents may help with read-only inspection or review, but the wave owner applies edits. Do not commit, merge, or push unless I explicitly ask. After fixes land, the human runs PR review and merge outside this command; once a Bug's branch is merged, the human can flip its agent-run status to closed.`);
   }
   throw new Error(`Unknown prompt: ${name}`);
 }

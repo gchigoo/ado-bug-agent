@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ADO Bug Agent Batch Plan",
+  "type": "object",
+  "required": ["batchId", "status", "baseBranch", "createdAt", "sourceIssues", "waves"],
+  "properties": {
+    "batchId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "approved", "active", "closed"]
+    },
+    "baseBranch": { "type": "string" },
+    "createdAt": { "type": "string" },
+    "approvedAt": { "type": "string" },
+    "sourceIssues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["issue", "adoId", "analysisPath", "selectedOption", "expectedTouchedFiles", "riskLevel", "parallelSafety"],
+        "properties": {
+          "issue": { "type": "string" },
+          "adoId": { "type": "integer" },
+          "analysisPath": { "type": "string" },
+          "selectedOption": { "type": "string" },
+          "expectedTouchedFiles": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "dependencies": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "riskLevel": { "type": "string", "enum": ["low", "medium", "high"] },
+          "parallelSafety": { "type": "string", "enum": ["safe", "serial", "required-root-cause", "unknown"] },
+          "verification": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "waves": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["wave", "status", "issues", "branch", "worktree"],
+        "properties": {
+          "wave": { "type": "integer", "minimum": 1 },
+          "status": { "type": "string", "enum": ["planned", "active", "completed"] },
+          "issues": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "branch": { "type": "string" },
+          "worktree": { "type": "string" },
+          "notes": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "blocked": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["issue", "reason"],
+        "properties": {
+          "issue": { "type": "string" },
+          "adoId": { "type": "integer" },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "missing-report-info",
+              "analysis-awaiting-confirmation",
+              "missing-selected-option",
+              "missing-fix-scope",
+              "dependency-blocked",
+              "scope-conflict",
+              "unknown"
+            ]
+          },
+          "reportPath": { "type": "string" },
+          "analysisPath": { "type": "string" },
+          "nextAction": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

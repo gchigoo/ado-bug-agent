@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- `/ado-bug-merge-gate` command and the `ado_bug_merge_gate` MCP prompt. Merge ordering and regression planning are left to normal PR review; this plugin now stops at `fix-completed`.
+- `merge-gate` from `agent-run.json` and `batch-plan.json` status enums.
+- `released` from `active-file-locks.json` status enum (`completed` is now the terminal lock state).
+- `merge-plan.md` and `regression-report.md` artifacts.
+
+### Changed
+
+- `/ado-bug-batch-fix` flips `batch-plan.json` to `closed` once every wave is `completed`. Per-issue `closed` remains a human action after the fix branch is actually merged.
+- `commands/ado-bug-batch-fix.md` references to `merge-gate` removed; only `closed` is a hard stop now.
+
 ### Added
 
 - Credentials file fallback (`~/.ado-bug-agent/credentials.json` and project-local `.ado-bug-agent/credentials.json`), removing the requirement that the host process expose `AZURE_DEVOPS_*` env vars to MCP children. Resolves the common Windows pitfall where shell-only env vars and `.claude/settings.json` `env` blocks do not propagate to MCP child processes.
