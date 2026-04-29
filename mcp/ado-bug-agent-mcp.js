@@ -244,9 +244,9 @@ function listPrompts() {
     },
     {
       name: "ado_bug_analyze",
-      description: "Analyze one Azure DevOps Bug by ID or title.",
+      description: "Analyze one or more Azure DevOps Bugs by ID, or one Bug by title.",
       arguments: [
-        { name: "bug", description: "Bug ID or title", required: true }
+        { name: "bug", description: "Bug ID, space-separated list of Bug IDs, or a single title query", required: true }
       ]
     },
     {
@@ -286,8 +286,8 @@ function getPrompt(params) {
     return promptResult("Set up ADO Bug Agent defaults using the bundled MCP tools. List projects, ask me to choose one, choose or enter an assignee, then write .ado-bug-agent/config.json.");
   }
   if (name === "ado_bug_analyze") {
-    const bug = args.bug || "<bug id or title>";
-    return promptResult(`Analyze Azure DevOps Bug ${bug}. Use the bundled ADO MCP tools, including ado_get_bug image evidence when available. Keep ado_get_bug imageMode at the default "cache" unless inline image content is explicitly needed. Follow the ADO Bug Agent issue lifecycle: create or update an observable-facts report first, then draft a code-backed root-cause analysis with file:line evidence, 2-3 repair options, expected touched files, verification, and risk. Stop at the human checkpoint. Do not modify business code or commit.`);
+    const bug = args.bug || "<bug id, list of ids, or title>";
+    return promptResult(`Analyze Azure DevOps Bug(s) ${bug}. Pure numeric input is one Bug ID; multiple space-separated numeric inputs are a list of Bug IDs to fan out; a non-numeric input or --title flag is a single title query (no fan-out). Use the bundled ADO MCP tools, including ado_get_bug image evidence when available. Keep ado_get_bug imageMode at the default "cache" unless inline image content is explicitly needed. For each Bug, follow the ADO Bug Agent issue lifecycle: create or update an observable-facts report first, then draft a code-backed root-cause analysis with file:line evidence, 2-3 repair options, expected touched files, verification, and risk. When multiple Bug IDs are provided and the host supports subagents, act as coordinator with one subagent per Bug (2-3 active at a time) and collect only summaries plus artifact paths; otherwise process Bugs sequentially and summarize each before moving on. Parallelize analysis only. Stop at the human checkpoint per Bug. Do not modify business code or commit.`);
   }
   if (name === "ado_bug_scan") {
     return promptResult("Scan open Azure DevOps Bugs for the configured project and assignee. If multiple Bugs are eligible and the host supports subagents, coordinate one isolated subagent per Bug with 2-3 active at a time and collect only summaries plus artifact paths. For each eligible Bug, use the ADO Bug Agent issue lifecycle: observable-facts report first, then code-backed root-cause analysis with file:line evidence, repair options, expected touched files, verification, and risk. Parallelize analysis only. Do not modify business code or commit.");
