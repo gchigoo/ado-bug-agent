@@ -21,6 +21,15 @@ const DEFAULT_IMAGE_LIMIT = 5;
 const MAX_IMAGE_LIMIT = 10;
 const DEFAULT_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_IMAGE_MODE = "cache";
+// Single-image inline safety threshold. Cached images larger than this commonly
+// trip host-side "screenshot output is too large to inline" or Claude API
+// "Could not process image" errors when the agent tries to Read them. Override
+// with ADO_BUG_AGENT_INLINE_SAFE_BYTES if your host is more permissive.
+const DEFAULT_INLINE_SAFE_BYTES = 700 * 1024;
+const INLINE_SAFE_BYTES = (() => {
+  const raw = Number(process.env.ADO_BUG_AGENT_INLINE_SAFE_BYTES);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_INLINE_SAFE_BYTES;
+})();
 const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"]);
 
 let stdinBuffer = "";
@@ -287,10 +296,10 @@ function getPrompt(params) {
   }
   if (name === "ado_bug_analyze") {
     const bug = args.bug || "<bug id, list of ids, or title>";
-    return promptResult(`Analyze Azure DevOps Bug(s) ${bug}. Pure numeric input is one Bug ID; multiple space-separated numeric inputs are a list of Bug IDs to fan out; a non-numeric input or --title flag is a single title query (no fan-out). Use the bundled ADO MCP tools, including ado_get_bug image evidence when available. Keep ado_get_bug imageMode at the default "cache" unless inline image content is explicitly needed. For each Bug, follow the ADO Bug Agent issue lifecycle: create or update an observable-facts report first, then draft a code-backed root-cause analysis with file:line evidence, 2-3 repair options, expected touched files, verification, and risk. When multiple Bug IDs are provided and the host supports subagents, act as coordinator with one subagent per Bug (2-3 active at a time) and collect only summaries plus artifact paths; otherwise process Bugs sequentially and summarize each before moving on. Parallelize analysis only. Stop at the human checkpoint per Bug. Do not modify business code or commit.`);
+    return promptResult(`Analyze Azure DevOps Bug(s) ${bug}. Pure numeric input is one Bug ID; multiple space-separated numeric inputs are a list of Bug IDs to fan out; a non-numeric input or --title flag is a single title query (no fan-out). Use THIS plugin's ado_get_bug (default imageMode: "cache") for every Bug — never call mcp__azure-devops__wit_get_work_item_attachment or any external ADO MCP attachment tool, since they embed full base64 in tool results and the host truncates them ("too large to inline") or rejects them later ("Could not process image"). For each imageEvidence entry, only Read its localPath when inlineSafe is true; if inlineSafe is false, summarize from ADO title/fields/comments instead of trying to load the file. For each Bug, follow the ADO Bug Agent issue lifecycle: create or update an observable-facts report first, then draft a code-backed root-cause analysis with file:line evidence, 2-3 repair options, expected touched files, verification, and risk. When multiple Bug IDs are provided and the host supports subagents, act as coordinator with one subagent per Bug (2-3 active at a time) and collect only summaries plus artifact paths; otherwise process Bugs sequentially and summarize each before moving on. Parallelize analysis only. Stop at the human checkpoint per Bug. Do not modify business code or commit.`);
   }
   if (name === "ado_bug_scan") {
-    return promptResult("Scan open Azure DevOps Bugs for the configured project and assignee. If multiple Bugs are eligible and the host supports subagents, coordinate one isolated subagent per Bug with 2-3 active at a time and collect only summaries plus artifact paths. For each eligible Bug, use the ADO Bug Agent issue lifecycle: observable-facts report first, then code-backed root-cause analysis with file:line evidence, repair options, expected touched files, verification, and risk. Parallelize analysis only. Do not modify business code or commit.");
+    return promptResult("Scan open Azure DevOps Bugs for the configured project and assignee. Use THIS plugin's ado_get_bug for every Bug detail and screenshot — never call mcp__azure-devops__wit_get_work_item_attachment or any external ADO MCP attachment tool. Honor each imageEvidence entry's inlineSafe flag when deciding whether to Read its localPath. If multiple Bugs are eligible and the host supports subagents, coordinate one isolated subagent per Bug with 2-3 active at a time and collect only summaries plus artifact paths. For each eligible Bug, use the ADO Bug Agent issue lifecycle: observable-facts report first, then code-backed root-cause analysis with file:line evidence, repair options, expected touched files, verification, and risk. Parallelize analysis only. Do not modify business code or commit.");
   }
   if (name === "ado_bug_batch_plan") {
     const input = args.input || "";
@@ -948,6 +957,10 @@ function buildImageEvidence(allRefs, imageDownloads, selectedCount, maxImages) {
         selectedCount
       };
     }
+    const inlineSafe =
+      typeof download.sizeBytes === "number"
+        ? download.sizeBytes <= INLINE_SAFE_BYTES
+        : null;
     return {
       index,
       source: ref.source,
@@ -958,6 +971,11 @@ function buildImageEvidence(allRefs, imageDownloads, selectedCount, maxImages) {
       sizeBytes: download.sizeBytes,
       returnedAsImageContent: Boolean(download.data),
       localPath: download.localPath,
+      // true = safe to Read into the LLM context; false = file exists but is
+      // large enough that Read will likely trigger "too large to inline".
+      // Treat false as: skip Read, summarize from ADO text/comments instead.
+      inlineSafe,
+      inlineSafeThresholdBytes: INLINE_SAFE_BYTES,
       error: download.error
     };
   });

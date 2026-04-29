@@ -12,7 +12,7 @@ Steps:
 1. Read `AGENTS.md`, `CLAUDE.md`, and `.ado-bug-agent/config.json` if it exists.
 2. Resolve `project`, `assignedTo`, `limit`, and `postComment` from explicit arguments first, then local config.
 3. If project or assignee is missing, run the setup workflow first.
-4. Use `ado_search_bugs` to find open Bugs assigned to the resolved user.
+4. Use `ado_search_bugs` to find open Bugs assigned to the resolved user. For each Bug, fetch details with **this plugin's** `ado_get_bug`. Do not use `mcp__azure-devops__wit_get_work_item_attachment` or any external ADO MCP attachment endpoint for screenshots (see SKILL "Image Attachment Routing"). Honor each `imageEvidence` entry's `inlineSafe` flag when deciding whether to Read its `localPath`.
 5. Process at most `limit` Bugs in priority/changed-date order.
 6. If more than one Bug is eligible and the host supports subagents, keep this agent as coordinator and assign each subagent exactly one Bug ID. Limit active subagents to 2-3 at a time.
 7. Each subagent must run the same ADO Bug Agent report/analysis workflow as `ado-bug-analyze`, fetch only its own Bug's full ADO content and images, and write only its own `bug-analysis/issues/...` files.

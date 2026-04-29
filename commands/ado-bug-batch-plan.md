@@ -19,7 +19,7 @@ Rules:
 
 1. Read `AGENTS.md`, `CLAUDE.md` if present, `README.md`, and existing `bug-analysis/issues/...` artifacts.
 2. Resolve each explicit Bug ID or title/theme selector.
-3. For any selected Bug without a complete local report and analysis, fetch it through the bundled ADO MCP tools and run the normal single-Bug lifecycle:
+3. For any selected Bug without a complete local report and analysis, fetch it through **this plugin's** `ado_get_bug` (not `mcp__azure-devops__wit_get_work_item_attachment` or any external ADO MCP attachment endpoint — see SKILL "Image Attachment Routing") and run the normal single-Bug lifecycle:
    - create/update `{slug}-report.md`
    - create/update `{slug}-analysis.md`
    - update `agent-run.json`

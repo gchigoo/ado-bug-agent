@@ -21,8 +21,9 @@ Arguments: `$ARGUMENTS`
 3. Resolve the target Bug list:
    - Collect every numeric arg as a Bug ID. Deduplicate. Preserve user order.
    - For a title query, run `ado_search_bugs` in the resolved project; if multiple match, stop and ask the user to choose one ID before continuing.
-   - For each Bug ID, use `ado_get_bug` to fetch sanitized fields, comments, and image attachments.
+   - For each Bug ID, use **this plugin's** `ado_get_bug` to fetch sanitized fields, comments, and image attachments. Do not call `mcp__azure-devops__wit_get_work_item_attachment` or any external ADO MCP attachment endpoint — they will truncate or corrupt screenshots (see SKILL "Image Attachment Routing").
    - Keep `ado_get_bug` image handling at the default `imageMode: "cache"` so ADO screenshots are saved to local cache paths instead of being returned as token-expensive base64 or raw protected URLs.
+   - For each `imageEvidence` entry, only Read its `localPath` when `inlineSafe` is `true`. If `inlineSafe` is `false`, do not Read the file; summarize from ADO title, fields, and comments, and ask the user to describe the screenshot if its content is essential.
 
 ### Single-Bug path
 

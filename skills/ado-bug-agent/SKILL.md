@@ -50,7 +50,19 @@ Automation stops at `analysis-draft` until the user confirms the analysis. Later
    - `ado_search_identities`
    - `ado_clear_bug_image_cache`
 
-`ado_get_bug` returns sanitized text plus downloadable ADO screenshots or image attachment metadata. By default, images are downloaded to `.ado-bug-agent/cache/attachments/...` and returned as local paths so the host can read only the images it needs. The default cost boundary is 5 images per Bug and 10 MB per image. When `imageEvidence` includes `localPath`, inspect only the relevant local image files through the host's normal image-reading capability. Use `imageMode: "inline"` only when the host specifically needs MCP image content in the tool response; it is token-expensive. Treat image evidence as important problem context, but do not paste raw protected ADO attachment URLs into report or analysis files. Preserve image findings as concise observations and cite their ADO source metadata.
+`ado_get_bug` returns sanitized text plus downloadable ADO screenshots or image attachment metadata. By default, images are downloaded to `.ado-bug-agent/cache/attachments/...` and returned as local paths so the host can read only the images it needs. The default cost boundary is 5 images per Bug and 10 MB per image. Treat image evidence as important problem context, but do not paste raw protected ADO attachment URLs into report or analysis files. Preserve image findings as concise observations and cite their ADO source metadata.
+
+## Image Attachment Routing (hard rule)
+
+ADO image attachments MUST be fetched through this plugin's `ado_get_bug` with the default `imageMode: "cache"`. Do not use any other ADO MCP server's attachment endpoint — in particular, never call `mcp__azure-devops__wit_get_work_item_attachment` (or any `wit_*` / `work_*` attachment tool from the Microsoft official ADO MCP) to fetch screenshots. Those tools embed the full base64 in the tool result text, where the host either truncates them ("screenshot output is too large to inline") or fails to decode them later ("Could not process image"). Trying to recover the bytes by grepping base64 out of tool-result JSON files is a dead end — the truncated payload is not a valid PNG.
+
+When a Bug references screenshots:
+
+1. Call `ado_get_bug` (this plugin) once for that Bug ID.
+2. Read the returned `imageEvidence` array. Each entry has `localPath`, `sizeBytes`, `mimeType`, and `inlineSafe`.
+3. If `inlineSafe` is `true`, use the host's normal Read tool on `localPath` to load the image into context.
+4. If `inlineSafe` is `false`, do not Read it — the file is large enough that the host will reject the inline image. Instead, summarize from the ADO title, fields, and comments around the screenshot, and ask the user to describe the screenshot if its content is essential.
+5. Use `imageMode: "inline"` only when the caller specifically needs MCP image content in the tool response and accepts the token cost.
 
 After the user confirms the analysis and detailed repair plan, call `ado_clear_bug_image_cache` for that Bug ID. Keep the report and analysis text, but remove cached screenshots to save disk space.
 
